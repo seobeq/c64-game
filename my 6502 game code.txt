@@ -1,0 +1,460 @@
+; My second 6502 game! 
+; Platformer Jan 19.
+; ----------------------------------------
+.include "labels.asm"        
+.include "macro.asm"              
+.include "spritedata.asm"                                    
+; ----------------------------------------
+       *= $0801 
+.byte $0c,$08,$0a,$00,$9e
+.byte $20,$34,$30,$39,$36
+.byte $00,$00,$00        
+; ----------------------------------------
+; clear screen
+; ----------------------------------------     
+        *= $1000  
+        #bgc $06,$d021 ;6 = c64 blue
+         lda #$00
+         tax
+         lda #$20 ;20       
+clearloop
+         sta $0400,x
+         sta $0500,x
+         sta $0600,x
+         sta $0700,x
+         dex
+         bne clearloop 
+; ----------------------------------------
+; clear charset
+; ----------------------------------------
+;       *= $1030 
+;         ldx #$00
+;         lda #$00 ;00
+;clearchar
+;         sta $3800,x
+;         sta $3900,x
+;         sta $3a00,x
+;         sta $3b00,x 
+;         inx
+;         bne clearchar
+; ----------------------------------------
+; draw sprites
+; ----------------------------------------
+         lda #%00000001
+         sta spriteon
+;         sta multicolour        
+         ldx #$00 
+         lda #$84
+         sta sprtpnt,x
+         lda #%0000000
+         sta expandx
+         sta expandy
+         lda #$09 ;0c
+         sta spritecol1 ; eyes
+         lda #$05 ;2
+         sta spritecol2 ; dungarees
+         lda #$0b
+         sta spritecol3 ; body     
+         ;lda #$17    
+         ;sta lowercase       
+; ----------------------------------------
+; charset location
+; ----------------------------------------
+		lda #$1e ;14 $0400  $1000 / upper lower; 1e 
+        sta $d018        
+; ----------------------------------------
+; make border
+; ----------------------------------------
+; top
+; ----------------------------------------
+	ldx #$00 
+	ldy #$00 
+xx1	
+	lda screenlo,x
+	sta screenlostore
+	sta screencollo ;collo
+	lda screenhi,x
+	sta screenhistore
+	clc
+	adc #$d4
+	sta screencolhi ;colhi
+	lda #$01
+	sta (screenlostore),y
+	lda #$01 ; char colour
+	sta (screencollo),y
+	iny
+	cpy #$28
+	bne xx1
+; ----------------------------------------
+;	bottom
+; ----------------------------------------	
+	ldx #$18
+	ldy #$00
+xx2	
+	lda screenlo,x
+	sta screenlostore
+	sta screencollo ;
+	lda screenhi,x
+	sta screenhistore
+	clc ;
+	adc #$d4 ;
+	sta screencolhi ;
+	lda #$01
+	sta (screenlostore),y
+	lda #$01 ;
+	sta (screencollo),y ;
+	iny
+	cpy #$28
+	bne xx2
+; ----------------------------------------
+; left	
+; ----------------------------------------	
+	ldx #$01
+	ldy #$00
+xx3		
+	lda screenlo,x
+	sta screenlostore
+	sta screencollo
+	lda screenhi,x
+	sta screenhistore
+	clc
+	adc #$d4
+	sta screencolhi
+	lda #$01
+	sta (screenlostore),y
+	lda #$01
+	sta (screencollo),y
+	inx
+	cpx #$18
+	bne xx3
+; ----------------------------------------
+; right	
+; ----------------------------------------
+	ldx #$01
+	ldy #$27	
+xx4		
+	lda screenlo,x
+	sta screenlostore
+	sta screencollo
+	lda screenhi,x
+	sta screenhistore
+	clc
+	adc #$d4
+	sta screencolhi
+	lda #$01
+	sta (screenlostore),y
+	lda #$01
+	sta (screencollo),y
+	inx
+	cpx #$18
+	bne xx4
+; ----------------------------------------
+; platforms
+; ----------------------------------------
+  	ldx #$00
+	ldy #$00
+plat		
+	lda map1lo,x
+	sta screenlostore
+	sta screencollo
+	lda map1hi,x
+	sta screenhistore
+	clc
+	adc #$d4
+	sta screencolhi
+	lda #$00
+	sta (screenlostore),y
+	lda #$05
+	sta (screencollo),y
+	inx
+	cpx #$06
+	bne plat    
+; ----------------------------------------
+; sprite starting position
+; ----------------------------------------
+         lda pattern+1
+         sta vrtsprt+1 ; y
+         lda pattern
+         sta vrtsprt   ; x
+; ----------------------------------------
+; initialize interrupt
+; ----------------------------------------
+         sei
+         lda #<irq ;lsb
+         ldy #>irq ;msb
+         sta $0314
+         sty $0315
+         lda #$7f
+         sta $dc0d
+         lda #$01
+         sta $d01a
+         lda #$00 ;start line
+         sta $d012
+         lda $d011
+         and #$7f
+         sta $d011
+         cli
+         ;rti      
+; ----------------------------------------
+; main loop
+; ----------------------------------------
+loop      
+         jmp loop
+; ----------------------------------------
+; irq routines
+; ----------------------------------------
+irq
+         lda #$06 ; 7
+         sta $d020
+; ----------------------------------------
+         jsr msbx 
+         jsr joycheck
+;         jsr hitbox
+;         jsr playercollision   
+         jsr charcollision
+; ----------------------------------------
+         lda #$00 ;0
+         sta $d020
+; ----------------------------------------
+         asl $d019 ;ack
+         jmp $ea31
+; ----------------------------------------
+msbx
+         lda vrtsprt+1 
+         sta $d001 ;Update sprite position y axis by two       
+         lda vrtsprt ;Load byte to double
+         asl  ;$80 and above produces a carry
+         rol $d010 ;Rotates into msbx byte
+         sta $d000 ;Update sprite position x axis by two         
+
+         rts               
+; ----------------------------------------
+joycheck
+         lda joystick
+         and #%00000100
+         bne notleft
+         jmp mvleft
+notleft
+         lda joystick
+         and #%00001000
+         bne notright
+         jmp mvright
+notright
+         lda joystick
+         and #%00000001
+         bne notup
+         jmp mvup
+notup         
+         lda joystick
+         and #%00000010
+         bne notdown
+         jmp mvdown
+notdown         
+         rts
+; ----------------------------------------
+mvright
+         ldx vrtsprt
+         cpx #$a0 ;98
+         beq hitbord            
+         inx
+         ;inx
+         ;inx
+         stx vrtsprt
+         rts
+; ----------------------------------------                 
+mvleft
+         ldx vrtsprt
+         cpx #$0c
+         beq hitbord            
+         dex
+         ;dex
+         ;dex
+         stx vrtsprt
+         rts
+; ----------------------------------------         
+mvup         
+         ldy vrtsprt+1
+         cpy #$32 ;2e
+         beq hitbord        
+         dey
+         dey
+         ;dey
+         ;dey
+         sty vrtsprt+1
+         rts
+; ----------------------------------------         
+mvdown         
+         ldy vrtsprt+1
+         cpy #$e6 ;d2
+         beq hitbord    
+         iny
+         iny
+         ;iny
+         ;iny
+         sty vrtsprt+1
+         rts        
+hitbord      
+         rts 
+; ----------------------------------------
+;expand msbx
+; ----------------------------------------
+; This bit of code does the actual movememt by writing values 
+; to $d000 and $d001 (x & y screen positions).
+; It loads a byte from vrtsprt, doubles it and 
+; reads the msb nybble of the result. It sets the carry if 
+; the value is $80 or above. It then rotates the  carry into 
+; the msbx byte (9th bit).
+; We then store the doubled value into $d000.
+; This increments x by two steps each time. 
+; To get across the 255 border, when $80 is reached 
+; and doubled the accumulator contains a zero and the 9th 
+; bit is set. 
+; We then continue counting up from zero plus the 9th bit! 
+; ----------------------------------------     
+;hitbox
+;       lda vrtsprt
+;       sec
+;       sbc #$08 ;06
+;       sta player1+$00
+;       clc
+;       adc #$10 ;0c  
+;       sta player1+$01
+;       lda vrtsprt+1
+;       sec
+;       sbc #$10 ;0c
+;       sta player1+$02
+;       clc
+;       adc #$20 ;18
+;       sta player1+$03
+;       rts
+; ----------------------------------------
+;playercollision
+;       lda #$30
+;       cmp player1+$00
+;       bcc nohit
+;       cmp player1+$01
+;       bcs nohit
+;       lda #$6a
+;       cmp player1+$02
+;       bcc nohit
+;       cmp player1+$03
+;       bcs nohit
+;       dec $d027   
+;nohit      
+;       rts     
+; ----------------------------------------
+charcollision               
+        lda vrtsprt+1 ; y
+        sec 
+        sbc #$32 ;32 2a 22 ;24
+        lsr
+        lsr
+        lsr 
+        tay
+;        iny ; makes the index for address table (row)
+        lda screenlo,y ; at address of bytes
+        sta screenlostore
+        lda screenhi,y
+        sta screenhistore
+; ----------------------------------------
+; column
+; ----------------------------------------
+        lda vrtsprt+0 ; #12
+        sec
+        sbc #$0c ;04 0c 00
+        lsr
+        lsr                 
+;       lsr
+        tay  
+; ----------------------------------------
+        lda (screenlostore),y           
+        cmp #$00 ; $20
+        beq spritecharcol
+        rts       
+spritecharcol       		      
+        dec $d027 ; d027    
+        rts                        
+; ----------------------------------------
+; screen line positions
+; ----------------------------------------
+screenlo
+.byte $00,$28,$50,$78,$a0
+.byte $c8,$f0,$18,$40,$68
+.byte $90,$b8,$e0,$08,$30
+.byte $58,$80,$a8,$d0,$f8 
+.byte $20,$48,$70,$98,$c0,$e0  
+screenhi    
+.byte $04,$04,$04,$04,$04
+.byte $04,$04,$05,$05,$05
+.byte $05,$05,$05,$06,$06
+.byte $06,$06,$06,$06,$06
+.byte $07,$07,$07,$07,$07,$07          
+; ----------------------------------------
+; character map positions
+; ----------------------------------------
+map1hi                
+.byte $05,$04,$05,$05,$06,$05         
+map1lo
+.byte $71,$b3,$b5,$f7,$c9,$fb    
+; ----------------------------------------
+; sprite starting position
+; ----------------------------------------
+		*=$2200
+pattern
+.byte $0c,$32 ;$0c,$32
+; ----------------------------------------
+; Virtual sprite table          
+; ----------------------------------------
+		*=$2202  
+vrtsprt
+.byte $00,$00   ;x/y        0/+1
+; ----------------------------------------
+; font and graphics
+; ----------------------------------------
+        *= $3800                     
+font      
+;.byte $3c,$4c,$de,$de,$dc,$c0 ;@ 0
+;.byte $5c,$3c
+;.byte $ff,$ff,$ff,$ff,$ff,$ff ;solid block d
+;.byte $ff,$ff
+.byte $10,$10,$38,$38,$7c,$7c ;solid block d
+.byte $38,$10
+.byte $ff,$ff,$ff,$ff,$ff,$ff ;solid block d
+.byte $ff,$ff
+; ----------------------------------------
+.byte $ff,$fe,$fc,$f8,$f8,$fc ;@ 0
+.byte $fe,$ff
+; ----------------------------------------
+.byte $18,$24,$42,$7e,$7e,$42 ;a 1
+.byte $42,$42
+;.byte $ff,$ff,$ff,$ff,$ff,$ff ;solid block d
+;.byte $ff,$ff
+.byte $f8,$c4,$c4,$fc,$fe,$c6 ;b 2
+.byte $c4,$f8
+.byte $38,$44,$c0,$c0,$c0,$c0 ;c 3
+.byte $44,$38
+.byte $fc,$c0,$c3,$c3,$c3,$c3 ;d 4
+.byte $c6,$fc
+.byte $fe,$c0,$c0,$f8,$c0,$c0 ;e 5
+.byte $c0,$fe
+.byte $fe,$c0,$c0,$f8,$c0,$c0 ;f 6
+.byte $c0,$c0
+.byte $38,$64,$c2,$c0,$c7,$c2 ;g 7
+.byte $64,$38
+.byte $66,$66,$66,$7e,$66,$66 ;h 8
+.byte $66,$66
+.byte $3c,$18,$18,$18,$18,$18 ;i 9
+.byte $18,$3c
+.byte $3c,$18,$18,$18,$18,$18 ;j a
+.byte $58,$30
+.byte $cc,$d8,$f0,$e0,$e0,$f0 ;k b
+.byte $d8,$cc
+.byte $60,$60,$60,$60,$60,$60 ;l c
+.byte $60,$7e
+.byte $ff,$ff,$ff,$ff,$ff,$ff ;solid block d
+.byte $ff,$ff
+; ----------------------------------------
+; ----------------------------------------
+
+
+        
